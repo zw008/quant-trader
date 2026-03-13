@@ -310,11 +310,13 @@ def doctor() -> dict:
 # ── Daily Workflow ──────────────────────────────────────────────────────────
 
 from quant_trader.daily_workflow import DailyWorkflow
+from quant_trader.macro_risk import MacroRisk
 from quant_trader.trade_journal import TradeJournal
 from datetime import date
 
+_macro = MacroRisk(_provider)
 _journal = TradeJournal()
-_workflow = DailyWorkflow(cfg, md, ta, sent, fund, _journal)
+_workflow = DailyWorkflow(cfg, md, ta, sent, fund, _journal, macro_risk=_macro)
 
 
 @mcp.tool()
@@ -347,6 +349,21 @@ def add_manual_pick(symbol: str, entry_price: float, target: float, stop_loss: f
 def win_rate_history(date_str: str | None = None) -> dict:
     """胜率历史统计。date_str=None 返回全部历史，否则返回指定日期。"""
     return _journal.win_rate_stats(date_str)
+
+
+# ── Macro Risk ──────────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def get_macro_risk() -> dict:
+    """宏观风险评估：地缘政治、油价、VIX、利率、汇率综合分析。每次交易决策前必须查看"""
+    return _macro.assess_risk()
+
+
+@mcp.tool()
+def get_risk_news(max_items: int = 10) -> list:
+    """获取地缘政治和宏观风险相关新闻（原油、黄金、VIX）"""
+    return _macro.get_risk_news(max_items)
 
 
 if __name__ == "__main__":

@@ -10,6 +10,11 @@ from quant_trader.sentiment import MarketSentiment
 from quant_trader.fundamental import Fundamental
 from quant_trader.trade_journal import TradeJournal, DEFAULT_REPORTS_DIR
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from quant_trader.macro_risk import MacroRisk
+
 SCORE_THRESHOLD = 70  # Multi-factor score >= 70 to recommend
 
 
@@ -23,6 +28,7 @@ class DailyWorkflow:
         fundamental: Fundamental,
         journal: TradeJournal,
         reports_dir: Path = DEFAULT_REPORTS_DIR,
+        macro_risk: MacroRisk | None = None,
     ) -> None:
         self._cfg = config
         self._md = market_data
@@ -32,6 +38,7 @@ class DailyWorkflow:
         self._journal = journal
         self._dir = reports_dir
         self._dir.mkdir(parents=True, exist_ok=True)
+        self._macro = macro_risk
 
     # ── Morning Briefing ─────────────────────────────────────────────────────
 
@@ -47,6 +54,14 @@ class DailyWorkflow:
         sectors = self._sent.get_sector_heat()[:3]
         picks_summary: list[dict] = []
         recommendations: list[dict] = []
+
+        # Macro risk assessment (when available)
+        macro_assessment: dict | None = None
+        if self._macro is not None:
+            try:
+                macro_assessment = self._macro.assess_risk()
+            except Exception:
+                macro_assessment = None
 
         for sym in wl:
             try:
@@ -108,6 +123,14 @@ class DailyWorkflow:
             "watchlist_analysis": picks_summary,
             "recommendations": recommendations,
         }
+        if macro_assessment is not None:
+            result["macro_risk"] = {
+                "level": macro_assessment["level"],
+                "risk_score": macro_assessment["risk_score"],
+                "max_total_position": macro_assessment["max_total_position"],
+                "factors": macro_assessment["factors"],
+                "recommendation": macro_assessment["recommendation"],
+            }
         self._write_morning_md(today, result)
         return result
 
@@ -116,6 +139,31 @@ class DailyWorkflow:
         lines = [
             f"# {date_str} 开市早报",
             "",
+        ]
+        # Macro risk section (if available)
+        macro = data.get("macro_risk")
+        if macro:
+            level_emoji = {
+                "extreme": "EXTREME",
+                "high": "HIGH",
+                "medium": "MEDIUM",
+                "low": "LOW",
+            }
+            lines += [
+                "## 宏观风险评估",
+                (
+                    f"- 风险等级: **{level_emoji.get(macro['level'], macro['level'])}**"
+                    f"  |  风险分: {macro['risk_score']}"
+                    f"  |  建议最大仓位: {macro['max_total_position']:.0%}"
+                ),
+                f"- {macro['recommendation']}",
+            ]
+            if macro["factors"]:
+                lines.append("- 风险因子:")
+                for f in macro["factors"]:
+                    lines.append(f"  - {f}")
+            lines.append("")
+        lines += [
             "## 大盘情绪",
             (
                 f"- VIX: **{mood['vix']}**  |  情绪: **{mood['fear_greed']}**"
