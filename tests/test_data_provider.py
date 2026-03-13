@@ -57,3 +57,26 @@ def test_cached_provider_passes_through_ohlcv():
     cached.get_ohlcv("AAPL", "1mo", "1d")
     cached.get_ohlcv("AAPL", "1mo", "1d")
     assert inner.get_ohlcv.call_count == 2  # Not cached
+
+
+def test_cached_provider_caches_info():
+    inner = MagicMock(spec=DataProvider)
+    inner.get_info.return_value = {"regularMarketPrice": 175.0, "sector": "Technology"}
+    cached = CachedProvider(inner, quote_ttl=60, info_ttl=3600)
+
+    info1 = cached.get_info("AAPL")
+    info2 = cached.get_info("AAPL")
+    assert info1["sector"] == "Technology"
+    assert info2["sector"] == "Technology"
+    assert inner.get_info.call_count == 1  # Cached
+
+
+def test_yfinance_provider_get_info():
+    with patch("quant_trader.data_provider.yf.Ticker") as mock_ticker:
+        mock_ticker.return_value.info = {
+            "regularMarketPrice": 175.0,
+            "sector": "Technology",
+        }
+        provider = YFinanceProvider()
+        info = provider.get_info("AAPL")
+        assert info["sector"] == "Technology"

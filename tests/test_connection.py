@@ -61,3 +61,24 @@ def test_reconnect_exhausted_raises(mock_ib_class):
     conn = IBConnection(cfg)
     with pytest.raises(ConnectionError):
         conn.connect(max_retries=2, backoff_base=0.01)
+
+
+@patch("quant_trader.connection.IB")
+def test_disconnect_when_connected(mock_ib_class):
+    mock_ib = MagicMock()
+    mock_ib.isConnected.return_value = True
+    mock_ib_class.return_value = mock_ib
+    cfg = Config()
+    conn = IBConnection(cfg)
+    conn.connect()
+    conn.disconnect()
+    mock_ib.disconnect.assert_called_once()
+
+
+@patch("quant_trader.connection.IB")
+def test_disconnect_when_not_connected(mock_ib_class):
+    """Disconnect does nothing if not connected."""
+    cfg = Config()
+    conn = IBConnection(cfg)
+    # No error when disconnecting without connection
+    conn.disconnect()

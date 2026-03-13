@@ -32,6 +32,28 @@ def test_get_news_sentiment_returns_list():
         assert "title" in news[0]
 
 
+def test_get_market_mood_greed():
+    provider = MagicMock()
+    provider.get_info.side_effect = lambda sym: {
+        "^VIX": {"regularMarketPrice": 12.0},
+        "SPY": {"regularMarketPrice": 460.0, "regularMarketChangePercent": 1.2},
+    }.get(sym, {})
+    s = MarketSentiment(provider)
+    mood = s.get_market_mood()
+    assert mood["fear_greed"] == "greed"
+
+
+def test_get_market_mood_fear():
+    provider = MagicMock()
+    provider.get_info.side_effect = lambda sym: {
+        "^VIX": {"regularMarketPrice": 30.0},
+        "SPY": {"regularMarketPrice": 400.0, "regularMarketChangePercent": -2.0},
+    }.get(sym, {})
+    s = MarketSentiment(provider)
+    mood = s.get_market_mood()
+    assert mood["fear_greed"] == "fear"
+
+
 def test_get_sector_heat_returns_sorted_list():
     provider = MagicMock()
     call_count = {"n": 0}

@@ -85,3 +85,75 @@ def test_eod_summary_calculates_win_rate():
         assert "win_rate" in result
         md_path = Path(tmp) / "2026-03-13-eod.md"
         assert md_path.exists()
+
+
+def test_morning_briefing_below_threshold():
+    """Score below threshold -> no recommendations."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._ta.score_stock.return_value = 50.0  # Below 70 threshold
+        result = wf.morning_briefing(watchlist=["AAPL"], date_str="2026-03-13")
+        assert len(result["recommendations"]) == 0
+        content = (Path(tmp) / "2026-03-13-morning.md").read_text()
+        assert "观望" in content
+
+
+def test_morning_briefing_error_handling():
+    """When get_quote raises, symbol is still included with error."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._md.get_quote.side_effect = Exception("API error")
+        result = wf.morning_briefing(watchlist=["BAD"], date_str="2026-03-13")
+        assert len(result["watchlist_analysis"]) == 1
+        assert "error" in result["watchlist_analysis"][0]
+
+
+def test_intraday_snapshot_hit_target():
+    """Test snapshot when current price hits target."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._journal.add_pick("2026-03-13", "AAPL", 175.0, 185.0, 170.0, "test")
+        wf._md.get_quote.return_value = {"symbol": "AAPL", "price": 190.0}
+        result = wf.intraday_snapshot(date_str="2026-03-13")
+        assert result["snapshot"][0]["suggestion"] == "考虑止盈"
+
+
+def test_intraday_snapshot_hit_stop():
+    """Test snapshot when current price hits stop loss."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._journal.add_pick("2026-03-13", "AAPL", 175.0, 185.0, 170.0, "test")
+        wf._md.get_quote.return_value = {"symbol": "AAPL", "price": 165.0}
+        result = wf.intraday_snapshot(date_str="2026-03-13")
+        assert result["snapshot"][0]["suggestion"] == "考虑止损"
+
+
+def test_intraday_snapshot_error_handling():
+    """Test snapshot when get_quote raises for a symbol."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._journal.add_pick("2026-03-13", "AAPL", 175.0, 185.0, 170.0, "test")
+        wf._md.get_quote.side_effect = Exception("Network error")
+        result = wf.intraday_snapshot(date_str="2026-03-13")
+        assert "error" in result["snapshot"][0]
+
+
+def test_eod_summary_auto_outcomes():
+    """Test EOD summary auto-generating outcomes from open picks."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._journal.add_pick("2026-03-13", "AAPL", 175.0, 185.0, 170.0, "test")
+        wf._md.get_quote.return_value = {"symbol": "AAPL", "price": 190.0}
+        result = wf.eod_summary(date_str="2026-03-13")
+        assert result["total_picks"] == 1
+        assert result["wins"] == 1
+
+
+def test_eod_summary_with_explicit_outcomes():
+    """Test EOD summary with explicitly provided outcomes."""
+    with tempfile.TemporaryDirectory() as tmp:
+        wf = make_workflow(tmp)
+        wf._journal.add_pick("2026-03-13", "AAPL", 175.0, 185.0, 170.0, "test")
+        outcomes = [{"symbol": "AAPL", "exit_price": 160.0, "hit_target": False}]
+        result = wf.eod_summary(date_str="2026-03-13", outcomes=outcomes)
+        assert result["losses"] == 1

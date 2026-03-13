@@ -90,3 +90,66 @@ def test_cancel_order():
     plan = om.create_order_plan("AAPL", "BUY", 1, order_type="MKT")
     result = om.cancel_order(plan["plan_id"])
     assert result["status"] == "cancelled"
+
+
+def test_create_plan_invalid_action():
+    om = OrderManager(make_conn(), Config())
+    with pytest.raises(ValueError, match="Invalid action"):
+        om.create_order_plan("AAPL", "HOLD", 10)
+
+
+def test_get_order_status_existing():
+    om = OrderManager(make_conn(), Config())
+    plan = om.create_order_plan("AAPL", "BUY", 1, order_type="MKT")
+    status = om.get_order_status(plan["plan_id"])
+    assert status["symbol"] == "AAPL"
+    assert status["status"] == "pending_confirmation"
+
+
+def test_get_order_status_unknown():
+    om = OrderManager(make_conn(), Config())
+    status = om.get_order_status("nonexistent")
+    assert "error" in status
+
+
+def test_list_plans():
+    om = OrderManager(make_conn(), Config())
+    om.create_order_plan("AAPL", "BUY", 1, order_type="MKT")
+    om.create_order_plan("MSFT", "SELL", 2, order_type="MKT")
+    plans = om.list_plans()
+    assert len(plans) == 2
+    symbols = {p["symbol"] for p in plans}
+    assert symbols == {"AAPL", "MSFT"}
+
+
+def test_cancel_nonexistent_order():
+    om = OrderManager(make_conn(), Config())
+    with pytest.raises(KeyError, match="not found"):
+        om.cancel_order("nonexistent-id")
+
+
+def test_cancel_submitted_order():
+    """Cancel an order that has been submitted (has ib_order_id)."""
+    conn = make_conn()
+    trade_mock = MagicMock()
+    trade_mock.order.orderId = 999
+    conn.ib.placeOrder.return_value = trade_mock
+    cfg = Config._from_dict({"mode": "live", "live_double_confirm": True})
+    om = OrderManager(conn, cfg)
+    plan = om.create_order_plan("AAPL", "BUY", 1, order_type="MKT")
+    om.confirm_order(plan["plan_id"], confirm_live=True)
+    result = om.cancel_order(plan["plan_id"])
+    assert result["status"] == "cancelled"
+    conn.ib.cancelOrder.assert_called_once()
+
+
+def test_confirm_limit_order():
+    conn = make_conn()
+    trade_mock = MagicMock()
+    trade_mock.order.orderId = 456
+    conn.ib.placeOrder.return_value = trade_mock
+    om = OrderManager(conn, Config())
+    plan = om.create_order_plan("AAPL", "BUY", 5, order_type="LMT", limit_price=150.0)
+    result = om.confirm_order(plan["plan_id"])
+    assert result["status"] == "submitted"
+    assert result["ib_order_id"] == 456
