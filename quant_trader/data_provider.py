@@ -35,6 +35,9 @@ class YFinanceProvider:
                   interval: str = "1d") -> pd.DataFrame:
         df = yf.download(symbol, period=period, interval=interval,
                          progress=False, auto_adjust=True)
+        # yfinance returns MultiIndex columns for single ticker; flatten
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
         return df
 
     def get_info(self, symbol: str) -> dict:
