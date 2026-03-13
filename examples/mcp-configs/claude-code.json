@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "quant-trader": {
+      "command": "python",
+      "args": ["-m", "mcp_server"],
+      "cwd": "/path/to/quant-trader"
+    }
+  }
+}
