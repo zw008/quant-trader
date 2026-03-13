@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 name = "quant-trader"
 version = "0.1.0"
 description = "MCP Server for quantitative trading via Interactive Brokers"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "mcp>=1.0,<2.0",
     "ib_insync>=0.9,<1.0",
