@@ -117,12 +117,46 @@ def score_stock(symbol: str, period: str = "3mo") -> dict:
 
 
 @mcp.tool()
-def backtest_strategy(
-    symbol: str, strategy: str = "sma_cross", period: str = "1y"
-) -> dict:
-    """策略回测：胜率、夏普比率、最大回撤、总收益"""
+def backtest_strategy(symbol: str, strategy: str = "sma_cross",
+                      period: str = "1y", params: dict | None = None) -> dict:
+    """策略回测：胜率、夏普比率、最大回撤、总收益。用 list_strategies 查看可用策略"""
     df = md.get_ohlcv(symbol, period=period)
-    return ta.backtest_strategy(df, strategy)
+    return ta.backtest_strategy(df, strategy, **(params or {}))
+
+
+@mcp.tool()
+def list_strategies(market: str | None = None) -> list:
+    """列出所有可用量化策略。market: us/a_share/None(全部)。返回策略名、适用市场、描述"""
+    from quant_trader.strategies import list_strategies as _ls
+    return _ls(market)
+
+
+@mcp.tool()
+def run_strategy_signal(symbol: str, strategy: str = "sma_cross",
+                        period: str = "6mo", params: dict | None = None) -> dict:
+    """对个股运行策略信号分析。返回 buy/sell/hold 信号、强度(0-100)、理由、技术指标"""
+    df = md.get_ohlcv(symbol, period=period)
+    return ta.generate_signal(df, strategy, **(params or {}))
+
+
+@mcp.tool()
+def compare_strategies(symbol: str, strategies: list[str] | None = None,
+                       period: str = "1y") -> list:
+    """对比多个策略在同一只股票上的回测表现，按夏普比率排序"""
+    from quant_trader.strategies import list_strategies as _ls
+    df = md.get_ohlcv(symbol, period=period)
+    strat_names = strategies or [s["name"] for s in _ls()]
+    results = []
+    for name in strat_names:
+        try:
+            results.append(ta.backtest_strategy(df, name))
+        except Exception as e:
+            results.append({"strategy": name, "error": str(e)})
+    return sorted(
+        [r for r in results if "error" not in r],
+        key=lambda r: r.get("sharpe_ratio", 0),
+        reverse=True,
+    ) + [r for r in results if "error" in r]
 
 
 # ── Market Sentiment ─────────────────────────────────────────────────────────

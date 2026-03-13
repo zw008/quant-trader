@@ -192,28 +192,19 @@ class TechnicalAnalysis:
             "method": "atr_based",
         }
 
+    def generate_signal(self, df: pd.DataFrame, strategy: str = "sma_cross", **params) -> dict:
+        """Run a strategy signal analysis on the given data."""
+        from quant_trader.strategies import get_strategy
+        from dataclasses import asdict
+        strat = get_strategy(strategy)
+        signal = strat.generate_signal(df, **params)
+        return asdict(signal)
+
     def backtest_strategy(self, df: pd.DataFrame,
-                          strategy: str = "sma_cross") -> dict:
-        """Simple backtest. strategy: sma_cross"""
-        enriched = self.calc_indicators(df, ["sma"])
-        sma20 = enriched.get("SMA_20")
-        sma50 = enriched.get("SMA_50")
-        if sma20 is None or sma50 is None:
-            return {"strategy": strategy, "error": "insufficient data"}
-        positions = (sma20 > sma50).astype(int).shift(1).fillna(0)
-        returns = df["Close"].pct_change().fillna(0)
-        strat_returns = positions * returns
-        total = float((1 + strat_returns).prod() - 1)
-        std = strat_returns.std()
-        sharpe = float(strat_returns.mean() / std * (252 ** 0.5)) if std > 0 else 0
-        cumulative = (1 + strat_returns).cumprod()
-        max_dd = float(((cumulative.cummax() - cumulative) / cumulative.cummax()).max())
-        wins = int((strat_returns > 0).sum())
-        total_trades = int((strat_returns != 0).sum())
-        return {
-            "strategy": strategy,
-            "total_return": round(total, 4),
-            "sharpe_ratio": round(sharpe, 3),
-            "max_drawdown": round(max_dd, 4),
-            "win_rate": round(wins / total_trades if total_trades > 0 else 0, 3),
-        }
+                          strategy: str = "sma_cross", **params) -> dict:
+        """Backtest a strategy. Use list_strategies() to see available strategies."""
+        from quant_trader.strategies import get_strategy
+        from dataclasses import asdict
+        strat = get_strategy(strategy)
+        result = strat.backtest(df, **params)
+        return asdict(result)
