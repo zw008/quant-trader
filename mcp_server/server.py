@@ -273,5 +273,47 @@ def doctor() -> dict:
     }
 
 
+# ── Daily Workflow ──────────────────────────────────────────────────────────
+
+from quant_trader.daily_workflow import DailyWorkflow
+from quant_trader.trade_journal import TradeJournal
+from datetime import date
+
+_journal = TradeJournal()
+_workflow = DailyWorkflow(cfg, md, ta, sent, fund, _journal)
+
+
+@mcp.tool()
+def morning_briefing(watchlist: list[str] | None = None, date_str: str | None = None) -> dict:
+    """开市前早报：大盘情绪、热门板块、建议股（含入场/目标/止损）。结果保存到 ~/quant-trader-reports/YYYY-MM-DD-morning.md"""
+    return _workflow.morning_briefing(watchlist or list(cfg.watchlist), date_str)
+
+
+@mcp.tool()
+def intraday_snapshot(date_str: str | None = None) -> dict:
+    """盘中快照：当日建议股实时涨跌、是否触及目标/止损、加减仓建议。追加到 ~/quant-trader-reports/YYYY-MM-DD-intraday.md"""
+    return _workflow.intraday_snapshot(date_str)
+
+
+@mcp.tool()
+def eod_summary(date_str: str | None = None, outcomes: list[dict] | None = None) -> dict:
+    """收盘总结：自动计算胜率、平均盈亏，逐只复盘。outcomes格式: [{"symbol":"AAPL","exit_price":183.0,"hit_target":true}]。保存到 ~/quant-trader-reports/YYYY-MM-DD-eod.md"""
+    return _workflow.eod_summary(date_str, outcomes)
+
+
+@mcp.tool()
+def add_manual_pick(symbol: str, entry_price: float, target: float, stop_loss: float, reason: str, date_str: str | None = None) -> dict:
+    """盘中手动加入建议股"""
+    today = date_str or date.today().isoformat()
+    _journal.add_pick(today, symbol, entry_price, target, stop_loss, reason)
+    return {"status": "added", "symbol": symbol, "date": today}
+
+
+@mcp.tool()
+def win_rate_history(date_str: str | None = None) -> dict:
+    """胜率历史统计。date_str=None 返回全部历史，否则返回指定日期。"""
+    return _journal.win_rate_stats(date_str)
+
+
 if __name__ == "__main__":
     mcp.run()
