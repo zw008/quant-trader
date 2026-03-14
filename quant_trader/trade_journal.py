@@ -4,7 +4,7 @@ import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-DEFAULT_REPORTS_DIR = Path.home() / "quant-trader-reports"
+DEFAULT_REPORTS_DIR = Path(__file__).resolve().parent.parent / "reports"
 
 
 @dataclass

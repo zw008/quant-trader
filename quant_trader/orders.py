@@ -13,7 +13,7 @@ from quant_trader.connection import IBConnection
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_AUDIT_DIR = Path.home() / "quant-trader-reports"
+DEFAULT_AUDIT_DIR = Path(__file__).resolve().parent.parent / "reports"
 
 
 class OrderManager:

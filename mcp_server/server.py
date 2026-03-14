@@ -20,6 +20,8 @@ from quant_trader.orders import OrderManager
 from quant_trader.portfolio import Portfolio
 from quant_trader.sentiment import MarketSentiment
 from quant_trader.technical import TechnicalAnalysis
+from quant_trader.insider import InsiderTrading
+from quant_trader.hot_stocks import HotStocks
 
 cfg = Config.load()
 conn = IBConnection(cfg)
@@ -315,8 +317,11 @@ from quant_trader.trade_journal import TradeJournal
 from datetime import date
 
 _macro = MacroRisk(_provider)
+_insider = InsiderTrading()
+_hot = HotStocks(_provider)
 _journal = TradeJournal()
-_workflow = DailyWorkflow(cfg, md, ta, sent, fund, _journal, macro_risk=_macro)
+_workflow = DailyWorkflow(cfg, md, ta, sent, fund, _journal,
+                          macro_risk=_macro, hot_stocks=_hot, insider=_insider)
 
 
 @mcp.tool()
@@ -351,6 +356,12 @@ def win_rate_history(date_str: str | None = None) -> dict:
     return _journal.win_rate_stats(date_str)
 
 
+@mcp.tool()
+def meme_daily_report(symbols: list[str] | None = None, lookback_days: int = 5, date_str: str | None = None) -> dict:
+    """热门Meme股日报：量价异动扫描 + 多日动量 + 内部人警示。保存到 ~/quant-trader-reports/YYYY-MM-DD-meme.md"""
+    return _workflow.meme_daily_report(symbols, lookback_days, date_str)
+
+
 # ── Macro Risk ──────────────────────────────────────────────────────────────
 
 
@@ -364,6 +375,53 @@ def get_macro_risk() -> dict:
 def get_risk_news(max_items: int = 10) -> list:
     """获取地缘政治和宏观风险相关新闻（原油、黄金、VIX）"""
     return _macro.get_risk_news(max_items)
+
+
+# ── Insider Trading ────────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def get_insider_transactions(symbol: str, max_items: int = 20) -> list:
+    """获取个股内部人士交易记录（SEC Form 4）。追踪CEO/CFO/董事买卖动向"""
+    return _insider.get_transactions(symbol, max_items)
+
+
+@mcp.tool()
+def get_insider_summary(symbol: str) -> dict:
+    """内部人士买卖信号汇总：净买入/卖出金额、信号强度（bullish/bearish/neutral）"""
+    return _insider.get_insider_summary(symbol)
+
+
+@mcp.tool()
+def screen_insider_activity(symbols: list[str], min_value: float = 100_000) -> list:
+    """批量筛查内部人异常交易。按净卖出排序（最大风险在前）"""
+    return _insider.screen_insider_activity(symbols, min_value)
+
+
+# ── Hot / Meme Stocks ──────────────────────────────────────────────────────
+
+
+@mcp.tool()
+def scan_hot_movers(
+    symbols: list[str] | None = None,
+    lookback_days: int = 5,
+    min_volume_ratio: float = 2.0,
+    min_price_change: float = 5.0,
+) -> list:
+    """扫描热门异动股：量价齐升的小盘Meme股。默认扫描30+热门标的，支持自定义列表"""
+    return _hot.scan_hot_movers(symbols, lookback_days, min_volume_ratio, min_price_change)
+
+
+@mcp.tool()
+def get_top_gainers_losers(symbols: list[str] | None = None, top_n: int = 10) -> dict:
+    """今日涨跌幅排行（热门小盘股）。快速发现当日最强/最弱标的"""
+    return _hot.get_top_gainers_losers(symbols, top_n)
+
+
+@mcp.tool()
+def track_meme_momentum(symbols: list[str], days: int = 3) -> list:
+    """追踪Meme股多日动量：逐日量价、连涨/连跌、做空比例。适合小仓位追踪"""
+    return _hot.track_meme_momentum(symbols, days)
 
 
 if __name__ == "__main__":

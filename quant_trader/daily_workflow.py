@@ -14,6 +14,8 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from quant_trader.macro_risk import MacroRisk
+    from quant_trader.hot_stocks import HotStocks
+    from quant_trader.insider import InsiderTrading
 
 SCORE_THRESHOLD = 70  # Multi-factor score >= 70 to recommend
 
@@ -29,6 +31,8 @@ class DailyWorkflow:
         journal: TradeJournal,
         reports_dir: Path = DEFAULT_REPORTS_DIR,
         macro_risk: MacroRisk | None = None,
+        hot_stocks: HotStocks | None = None,
+        insider: InsiderTrading | None = None,
     ) -> None:
         self._cfg = config
         self._md = market_data
@@ -39,6 +43,8 @@ class DailyWorkflow:
         self._dir = reports_dir
         self._dir.mkdir(parents=True, exist_ok=True)
         self._macro = macro_risk
+        self._hot = hot_stocks
+        self._insider = insider
 
     # ── Morning Briefing ─────────────────────────────────────────────────────
 
@@ -325,4 +331,121 @@ class DailyWorkflow:
                 )
             lines.append(f"  - 理由: {p['reason']}")
         path = self._dir / f"{date_str}-eod.md"
+        path.write_text("\n".join(lines), encoding="utf-8")
+
+    # ── Meme / Hot Stock Daily Report ──────────────────────────────────────
+
+    def meme_daily_report(
+        self,
+        symbols: list[str] | None = None,
+        lookback_days: int = 5,
+        date_str: str | None = None,
+    ) -> dict:
+        """Daily hot/meme stock scan with momentum tracking and insider signals."""
+        today = date_str or date.today().isoformat()
+
+        result: dict = {"date": today, "hot_movers": [], "momentum": [],
+                        "gainers": [], "losers": [], "insider_flags": []}
+
+        if self._hot is None:
+            result["error"] = "HotStocks module not configured"
+            return result
+
+        # 1. Scan for hot movers (volume + price anomalies)
+        #    Use relaxed thresholds: any significant volume OR price move qualifies
+        hot_movers = self._hot.scan_hot_movers(
+            symbols=symbols, lookback_days=lookback_days,
+            min_volume_ratio=1.2, min_price_change=2.0,
+        )
+        result["hot_movers"] = hot_movers
+
+        # 2. Today's gainers/losers
+        gl = self._hot.get_top_gainers_losers(symbols=symbols, top_n=10)
+        result["gainers"] = gl.get("gainers", [])
+        result["losers"] = gl.get("losers", [])
+
+        # 3. Multi-day momentum for hot movers
+        momentum_syms = [m["symbol"] for m in hot_movers[:10]]
+        if momentum_syms:
+            result["momentum"] = self._hot.track_meme_momentum(
+                momentum_syms, days=lookback_days,
+            )
+
+        # 4. Insider flags for hot movers (if InsiderTrading available)
+        if self._insider is not None and momentum_syms:
+            for sym in momentum_syms[:5]:
+                try:
+                    summary = self._insider.get_insider_summary(sym)
+                    if summary.get("signal") not in ("no_data", "neutral"):
+                        result["insider_flags"].append(summary)
+                except Exception:
+                    continue
+
+        self._write_meme_md(today, result)
+        return result
+
+    def _write_meme_md(self, date_str: str, data: dict) -> None:
+        lines = [
+            f"# {date_str} 热门Meme股日报",
+            "",
+        ]
+
+        # Gainers / Losers
+        lines += ["## 今日涨跌排行", ""]
+        lines.append("| 标的 | 价格 | 涨跌 | 量比 |")
+        lines.append("|------|------|------|------|")
+        for g in data.get("gainers", [])[:5]:
+            lines.append(
+                f"| {g['symbol']} | ${g['price']} | "
+                f"{g['change_pct']:+.1f}% | {g['volume_ratio']:.1f}x |"
+            )
+        if data.get("losers"):
+            lines.append("| --- | --- | --- | --- |")
+            for lo in data.get("losers", [])[:5]:
+                lines.append(
+                    f"| {lo['symbol']} | ${lo['price']} | "
+                    f"{lo['change_pct']:+.1f}% | {lo['volume_ratio']:.1f}x |"
+                )
+        lines.append("")
+
+        # Hot movers detail
+        lines += ["## 量价异动股", ""]
+        for m in data.get("hot_movers", [])[:10]:
+            lines += [
+                f"### {m['symbol']}  ${m['price']}  ({m['signal']})",
+                f"- 5日涨跌: {m['change_pct']:+.1f}%  |  量比: {m['volume_ratio']:.1f}x  |  市值: {m.get('market_cap_label', 'N/A')}",
+            ]
+            for d in m.get("recent_days", []):
+                lines.append(
+                    f"  - {d['date']}  ${d['close']}  {d['change_pct']:+.1f}%  vol={d['volume']:,}"
+                )
+            lines.append("")
+
+        # Momentum tracking
+        if data.get("momentum"):
+            lines += ["## 多日动量追踪", ""]
+            lines.append("| 标的 | 价格 | 累计涨跌 | 趋势 | 做空比 |")
+            lines.append("|------|------|----------|------|--------|")
+            for mo in data["momentum"]:
+                si = mo.get("short_interest")
+                si_str = f"{si*100:.1f}%" if si else "N/A"
+                lines.append(
+                    f"| {mo['symbol']} | ${mo['current_price']} | "
+                    f"{mo['cumulative_change_pct']:+.1f}% | "
+                    f"{mo['pattern']} | {si_str} |"
+                )
+            lines.append("")
+
+        # Insider flags
+        if data.get("insider_flags"):
+            lines += ["## 内部人异动警示", ""]
+            for ins in data["insider_flags"]:
+                lines.append(
+                    f"- **{ins['symbol']}** [{ins['signal']}] "
+                    f"买入${ins.get('buy_value', 0):,.0f} / "
+                    f"卖出${ins.get('sell_value', 0):,.0f} — {ins.get('reason', '')}"
+                )
+            lines.append("")
+
+        path = self._dir / f"{date_str}-meme.md"
         path.write_text("\n".join(lines), encoding="utf-8")
