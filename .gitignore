@@ -8,3 +8,4 @@ dist/
 .coverage
 htmlcov/
 reports/
+docs/.DS_Store
