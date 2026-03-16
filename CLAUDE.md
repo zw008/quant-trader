@@ -1,128 +1,226 @@
-# Quant Trader — 项目规范
+# Quant Trader — Claude 使用指南
 
-## 项目目录结构（所有内容必须在此目录下）
-
-```
-quant-trader/                          # 项目根目录
-├── CLAUDE.md                          # 本文件：项目规范和标准流程
-├── README.md                          # 项目说明
-├── pyproject.toml                     # Python 依赖和构建配置
-├── quant_trader/                      # 核心模块
-│   ├── config.py                      #   配置管理
-│   ├── connection.py                  #   IB TWS 连接
-│   ├── data_provider.py               #   数据源（yfinance + 缓存）
-│   ├── market_data.py                 #   行情/K线
-│   ├── technical.py                   #   技术指标 + 多因子评分
-│   ├── strategies.py                  #   7个量化策略
-│   ├── sentiment.py                   #   市场情绪/新闻
-│   ├── fundamental.py                 #   基本面分析
-│   ├── macro_risk.py                  #   宏观风险/地缘政治
-│   ├── insider.py                     #   内部人交易监控
-│   ├── hot_stocks.py                  #   热门Meme股追踪
-│   ├── portfolio.py                   #   持仓管理
-│   ├── orders.py                      #   订单（Plan→Confirm）
-│   ├── daily_workflow.py              #   三段式日报 + Meme日报
-│   ├── trade_journal.py               #   交易日志/胜率
-│   └── scheduler.py                   #   定时任务
-├── mcp_server/
-│   └── server.py                      # MCP Server（39个工具）
-├── tests/                             # 测试（136 tests）
-├── skills/quant-trader/SKILL.md       # Claude Code Skill 描述
-├── docs/plans/                        # 实现计划
-└── reports/                           # ★ 所有报告和数据输出（.gitignore）
-    ├── portfolio.md                   #   当前持仓（持续更新）
-    ├── journal.json                   #   交易记录
-    ├── audit.json                     #   订单审计日志
-    ├── YYYY-MM-DD-morning.md          #   开市早报
-    ├── YYYY-MM-DD-intraday.md         #   盘中快照
-    ├── YYYY-MM-DD-eod.md              #   收盘总结
-    └── YYYY-MM-DD-meme.md             #   Meme股日报
-```
-
-**重要规则：** 所有与 quant-trader skill 相关的文件（代码、报告、计划、配置）必须放在 `quant-trader/` 目录下，不要散落到其他位置。
+克隆仓库后，在此目录运行 `claude`，以下工作流自动生效。
+如需全局使用（任意目录），运行 `bash install.sh`。
 
 ---
 
-## 每日标准工作流
+## 触发方式
 
-用户说"收盘分析"、"今天怎么样"、"分析一下"时，按以下 **完整流程** 执行，不要遗漏任何步骤。
+根据北京时间自动判断，也可手动指定：
 
-### 第一步：持仓分析
-
-1. 读取 `quant-trader/reports/portfolio.md` 获取当前持仓
-2. 对每只持仓股查询：现价、涨跌、RSI、MACD（金叉/死叉）、形态信号
-3. 标注止盈/止损触发情况
-4. 给出每只股的 **持有/减仓/清仓/加仓** 建议
-5. 更新 `portfolio.md` 中的现价和浮盈亏
-
-### 第二步：大盘与宏观
-
-1. `get_market_mood()` — VIX、恐贪指数、SPY涨跌
-2. `get_sector_heat()` — 11个行业ETF涨跌排行
-3. `get_macro_risk()` — 宏观风险评估（油价、黄金、VIX、利率、汇率、期货）
-4. `get_risk_news()` — 地缘政治和宏观新闻
-5. 总结当日市场主线（什么涨什么跌，为什么）
-
-### 第三步：新机会扫描
-
-1. `score_stock()` — 对 watchlist + 当日热门板块的代表性标的评分
-2. 结合宏观环境筛选：
-   - 受益于当前宏观趋势的标的（如油价涨→能源股）
-   - 超跌反弹机会（RSI<30 + 基本面OK）
-   - 趋势延续机会（均线多头 + 量价配合）
-3. 对评分>70的标的给出完整建议：入场价、止损、目标、持仓周期、理由
-
-### 第四步：Meme/热门小盘股
-
-1. `meme_daily_report()` — 扫描热门小盘异动股
-2. 重点关注：
-   - 量比>2x 的异动股
-   - 做空比>20% 的轧空候选
-   - 连涨/连跌趋势形成的标的
-3. 标注适合小仓位追踪的候选（仓位建议1-2%）
-
-### 第五步：内部人交易
-
-1. `screen_insider_activity()` — 对持仓 + 关注列表检查内部人买卖
-2. 标注异常信号（bearish/bullish）
-3. 大额CEO卖出 = 风险预警
-
-### 第六步：明日关注
-
-1. 汇总以上分析，给出明天的 **关注列表**（3-5只）
-2. 包含：标的、方向（做多/做空/观望）、触发条件、建议仓位
-3. 标注待执行的未完成操作（如挂单未成交的卖出）
-
-### 第七步：保存报告
-
-1. 将完整分析保存到 `quant-trader/reports/YYYY-MM-DD-eod.md`
-2. 更新 `quant-trader/reports/portfolio.md` 持仓状态
-3. 更新 `quant-trader/reports/journal.json` 交易记录
-
----
-
-## 分析原则（每次分析必须遵守）
-
-- **地缘政治和宏观风险必须纳入每次分析**，不能只看技术面
-- 结合新闻和市场消息，不能脱离基本面
-- 杠杆ETF（SHNY/NVTX/SPXU）注意衰减效应
-- 小盘Meme股仓位严格控制在1-2%
-- 高VIX环境下保持高现金比例
-- 分析报告用中文
-
-## MCP工具清单（39个）
-
-| 类别 | 工具 |
+| 说法 | 触发 |
 |------|------|
-| 行情 | `get_quote`, `get_ohlcv`, `screen_stocks` |
-| 技术 | `calc_indicators`, `detect_patterns`, `score_stock`, `backtest_strategy` |
-| 策略 | `list_strategies`, `run_strategy_signal`, `compare_strategies` |
-| 情绪 | `get_market_mood`, `get_sector_heat`, `get_news_sentiment` |
-| 基本面 | `get_financials`, `get_earnings_calendar`, `compare_peers` |
-| 持仓 | `get_positions`, `get_account_info`, `get_pnl` |
-| 订单 | `create_order_plan`, `confirm_order`, `cancel_order`, `get_order_status`, `list_order_plans` |
-| 日报 | `morning_briefing`, `intraday_snapshot`, `eod_summary`, `add_manual_pick`, `win_rate_history`, `meme_daily_report` |
-| 宏观 | `get_macro_risk`, `get_risk_news` |
-| 内部人 | `get_insider_transactions`, `get_insider_summary`, `screen_insider_activity` |
-| 热门股 | `scan_hot_movers`, `get_top_gainers_losers`, `track_meme_momentum` |
-| 系统 | `connect_ib`, `disconnect_ib`, `doctor` |
+| AH早报 / 早盘 / A股早报 | AH早报（06:00–14:59） |
+| AH收盘 / A股收盘 | AH收盘（15:00–20:59） |
+| 美股早报 / 美股开盘 | 美股早报（21:00–00:29） |
+| 美股收盘 / 美股怎样 | 美股收盘（00:30–05:59） |
+| 扫描标的 / 找机会 | 进攻性标的扫描 |
+
+---
+
+## 持仓配置
+
+读取 `reports/portfolio.md`。**文件不存在时**先创建：
+
+```bash
+mkdir -p reports
+```
+
+按以下模板填写 `reports/portfolio.md`：
+
+```markdown
+# 当前持仓
+
+## A股持仓
+| 代码 | 名称 | 成本价 | 仓位 | 备注 |
+|------|------|--------|------|------|
+| 600519.SS | 贵州茅台 | 1800.00 | 10% | 示例，请替换 |
+
+## 港股关注
+| 代码 | 名称 | 备注 |
+|------|------|------|
+| 0700.HK | 腾讯 | 示例，请替换 |
+
+## 美股持仓
+| 代码 | 名称 | 成本价 | 仓位 | 备注 |
+|------|------|--------|------|------|
+| AAPL | 苹果 | 150.00 | 10% | 示例，请替换 |
+```
+
+代码格式：A股上交所 `600519.SS`，深交所 `000858.SZ`，港股 `0700.HK`，美股 `AAPL`
+
+---
+
+## 数据获取
+
+MCP Server 已连接时优先调用工具；否则自动降级到 `uv run python` + yfinance。
+
+**yfinance 核心函数（所有模式共用）：**
+
+```python
+import yfinance as yf
+import pandas as pd
+import time
+
+def calc_rsi(close, period=14):
+    delta = close.diff()
+    gain = delta.clip(lower=0).rolling(period).mean()
+    loss = (-delta.clip(upper=0)).rolling(period).mean()
+    rs = gain / loss
+    return (100 - 100 / (1 + rs)).iloc[-1]
+
+def calc_macd_signal(close):
+    ema12 = close.ewm(span=12).mean()
+    ema26 = close.ewm(span=26).mean()
+    diff  = (ema12 - ema26) - (ema12 - ema26).ewm(span=9).mean()
+    if len(diff) >= 2:
+        if diff.iloc[-2] < 0 and diff.iloc[-1] > 0: return "金叉📈"
+        elif diff.iloc[-2] > 0 and diff.iloc[-1] < 0: return "死叉📉"
+        elif diff.iloc[-1] > 0: return "多头区"
+        else: return "空头区"
+    return "—"
+
+def full_analysis(symbol, name, cost=None):
+    time.sleep(1)
+    try:
+        info = yf.Ticker(symbol).info
+        curr = info.get("regularMarketPrice") or info.get("currentPrice")
+        prev = info.get("regularMarketPreviousClose") or info.get("previousClose")
+        if not curr:
+            return f"{name} ({symbol}) — 数据暂不可用"
+        chg       = (curr - prev) / prev * 100 if prev else 0
+        high52    = info.get("fiftyTwoWeekHigh")
+        low52     = info.get("fiftyTwoWeekLow")
+        vol       = info.get("volume")
+        avg_vol   = info.get("averageVolume") or info.get("averageDailyVolume10Day")
+        vol_ratio = vol / avg_vol if vol and avg_vol else None
+
+        df = yf.download(symbol, period="3mo", interval="1d", progress=False, auto_adjust=True)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+        close = df["Close"].squeeze()
+        rsi  = calc_rsi(close)
+        macd = calc_macd_signal(close)
+        ma5  = close.rolling(5).mean().iloc[-1]
+        ma10 = close.rolling(10).mean().iloc[-1]
+        ma20 = close.rolling(20).mean().iloc[-1]
+        ma60 = close.rolling(min(60, len(close))).mean().iloc[-1]
+        ccy  = "¥" if symbol.endswith((".SS", ".SZ")) else ("HK$" if symbol.endswith(".HK") else "$")
+
+        lines = [f"\n{'='*52}", f"  {name}  ({symbol})", f"{'='*52}"]
+        lines.append(f"  现价: {ccy}{curr:.2f}  {'▲' if chg>0 else '▼'}{abs(chg):.2f}%")
+        if cost:
+            pnl = (curr/cost-1)*100
+            lines.append(f"  成本: {ccy}{cost:.2f}  浮盈亏: {'+' if pnl>0 else ''}{pnl:.1f}%")
+        if high52 and low52 and high52 != low52:
+            pos52 = (curr - low52) / (high52 - low52) * 100
+            lines.append(f"  52周: {low52:.2f} ←[{pos52:.0f}%]→ {high52:.2f}")
+        if vol_ratio:
+            tag = "⚡放量" if vol_ratio > 2 else "缩量" if vol_ratio < 0.7 else "正常"
+            lines.append(f"  量比: {vol_ratio:.2f}x  {tag}")
+        lines.append(f"  RSI:  {rsi:.1f}  {'⚠️超买' if rsi>70 else '💡超卖' if rsi<30 else '中性'}")
+        lines.append(f"  MACD: {macd}")
+        lines.append(f"  均线: MA5={ma5:.2f} | MA10={ma10:.2f} | MA20={ma20:.2f} | MA60={ma60:.2f}")
+        if curr > ma5 > ma10 > ma20:    lines.append("  ✅ 多头排列")
+        elif curr < ma5 < ma10 < ma20:  lines.append("  ❌ 空头排列")
+        elif curr > ma20:               lines.append("  📊 站上MA20")
+        else:                           lines.append("  📉 跌破MA20")
+
+        advice = []
+        if rsi < 30:            advice.append("RSI超卖，关注反弹")
+        elif rsi > 75:          advice.append("RSI超买，注意回调")
+        if macd == "金叉📈":    advice.append("MACD金叉，短线做多信号")
+        elif macd == "死叉📉":  advice.append("MACD死叉，短线偏空")
+        if vol_ratio and vol_ratio > 2: advice.append("今日放量异动")
+        if not advice:          advice.append("无明显强信号，观望为主")
+        lines.append("  💬 " + "；".join(advice))
+        return "\n".join(lines)
+    except Exception as e:
+        time.sleep(3)
+        return f"{name} ({symbol}) — 获取失败: {e}"
+```
+
+**限流处理：** 每次请求间隔 sleep 1s；失败后 sleep 3s 重试一次，仍失败则标注"数据暂不可用"后继续。
+
+---
+
+## AH早报（06:00–14:59）
+
+报告保存：`reports/YYYY-MM-DD-ah-morning.md`
+
+1. **大盘**：上证综指(000001.SS) / 沪深300(000300.SS) / 创业板(399006.SZ) / 恒生(^HSI)
+2. **A股持仓**：逐只 `full_analysis()`，输出技术信号 + 操作建议
+3. **港股关注**：重点标的完整分析；其余输出简表（现价/涨跌/RSI/MACD）
+4. **AH溢价**：`(A股价 / (H股价 / 1.08) - 1) × 100%`，>40% 或负溢价标注 ⚠️
+5. **操作清单**（🔴高/🟡中/🟢低）+ 风险提示
+
+---
+
+## AH收盘（15:00–20:59）
+
+报告保存：`reports/YYYY-MM-DD-ah-eod.md`
+
+1. 全日指数涨跌复盘
+2. 持仓收盘盘点 + 更新 `reports/portfolio.md`
+3. 今日主线总结（什么涨/跌，原因）
+4. 明日关注事项 3 条
+
+---
+
+## 美股早报（21:00–00:29）
+
+报告保存：`reports/YYYY-MM-DD-us-morning.md`
+
+1. **大盘**：SPY / QQQ / DIA / ^VIX
+2. **美股持仓**：逐只 `full_analysis()`，杠杆ETF必加衰减提醒
+3. **宏观**：黄金(GC=F) / 原油(CL=F) / 美元(DX-Y.NYB) / 10年债(^TNX) / BTC-USD
+4. **操作清单 + 挂单提醒**
+
+---
+
+## 美股收盘（00:30–05:59）
+
+报告保存：`reports/YYYY-MM-DD-us-eod.md`
+
+1. SPY/QQQ/DIA 全日复盘 + VIX 变化
+2. 板块热力：XLK / XLE / XLF / XLV / XLY / XLI
+3. 持仓收盘盘点 + 更新 `reports/portfolio.md`
+4. 明日预告：重要数据/财报/止盈止损触发条件
+
+---
+
+## 进攻性标的扫描
+
+说"扫描标的"、"找机会"、"有什么好的标的"时执行：
+
+对目标标的池（A股+H股）计算进攻评分（满分100）：
+- RSI 45–65：+25分；MACD金叉：+30分，强多头区：+20分
+- 多头排列：+25分；52周分位40–70%：+15分；量比放量：+5分
+
+输出评分榜，>60分给出入场建议（价位/止损/理由）。
+H股标注 T+0 可当日来回。
+
+---
+
+## 下单工具（MCP 模式）
+
+两步确认，绝不自动执行：
+
+```
+Step 1: create_order_plan("AAPL", "BUY", 10, "MKT")  → 生成计划
+Step 2: 展示计划详情，等待用户确认
+Step 3: confirm_order(plan_id)  ← 仅用户明确同意后执行
+```
+
+---
+
+## 分析原则
+
+- RSI < 30 超卖 / RSI > 70 超买
+- MACD死叉 + 52周高位(>75%) = 🔴 重点预警
+- 量比 > 2x = ⚡ 异动，需说明原因
+- 杠杆ETF 每次必提衰减风险
+- VIX > 25 建议保持高现金比例
+- 地缘政治/宏观风险纳入每次分析
+- 报告全程中文
